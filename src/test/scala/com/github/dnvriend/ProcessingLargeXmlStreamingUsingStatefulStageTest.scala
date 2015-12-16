@@ -20,7 +20,6 @@ import akka.stream.scaladsl.Source
 import akka.stream.stage.{ Context, StageState, StatefulStage, SyncDirective }
 import akka.stream.testkit.scaladsl.TestSink
 
-import scala.io.{ Source ⇒ ScalaIOSource }
 import scala.xml.pull._
 
 class ProcessingLargeXmlStreamingUsingStatefulStageTest extends TestSpec {
@@ -70,9 +69,8 @@ class ProcessingLargeXmlStreamingUsingStatefulStageTest extends TestSpec {
   }
 
   "Processing XML with stateful stage" should "count the number of events" in {
-    withInputStream("orders.xml") { is ⇒
-      val xmlEventReader = new XMLEventReader(ScalaIOSource.fromInputStream(is))
-      Source(() ⇒ xmlEventReader).runFold(0) { (c, _) ⇒ c + 1 }.futureValue shouldBe 41
+    withXMLEventReader("orders.xml") { reader ⇒
+      Source(() ⇒ reader).runFold(0) { (c, _) ⇒ c + 1 }.futureValue shouldBe 41
     }
   }
 
