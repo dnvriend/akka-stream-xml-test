@@ -24,12 +24,13 @@ import akka.event.{ Logging, LoggingAdapter }
 import akka.stream.{ ActorMaterializer, Materializer }
 import akka.util.Timeout
 import org.scalatest.concurrent.ScalaFutures
-import org.scalatest.{ BeforeAndAfterAll, GivenWhenThen, Matchers, FlatSpec }
+import org.scalatest.{ BeforeAndAfterAll, FlatSpec, GivenWhenThen, Matchers }
 
-import scala.concurrent.{ Future, ExecutionContext }
 import scala.concurrent.duration._
+import scala.concurrent.{ ExecutionContext, Future }
 import scala.io.Source
 import scala.util.Try
+import scala.xml.pull.XMLEventReader
 
 trait TestSpec extends FlatSpec with GivenWhenThen with Matchers with ScalaFutures with BeforeAndAfterAll {
   implicit val timeout: Timeout = Timeout(5.seconds)
@@ -40,6 +41,7 @@ trait TestSpec extends FlatSpec with GivenWhenThen with Matchers with ScalaFutur
   implicit val pc: PatienceConfig = PatienceConfig(timeout = 50.seconds)
 
   type UUIDAsString = String
+
   def randomId: UUIDAsString = UUID.randomUUID.toString
 
   implicit class FutureToTry[T](f: Future[T]) {
@@ -48,8 +50,17 @@ trait TestSpec extends FlatSpec with GivenWhenThen with Matchers with ScalaFutur
 
   def withInputStream[T](fileName: String)(f: InputStream ⇒ T): T = {
     val is = fromClasspathAsStream(fileName)
-    try { f(is) } finally { Try(is.close()) }
+    try {
+      f(is)
+    } finally {
+      Try(is.close())
+    }
   }
+
+  def withXMLEventReader[T](fileName: String)(f: XMLEventReader ⇒ T): T =
+    withInputStream(fileName) { is ⇒
+      f(new XMLEventReader(Source.fromInputStream(is)))
+    }
 
   def streamToString(is: InputStream): String =
     Source.fromInputStream(is).mkString

@@ -77,9 +77,8 @@ class ProcessingLargeXmlStreamingUsingStatefulStageTest extends TestSpec {
   }
 
   it should "parse only events for Tax and generate Tax case classes" in {
-    withInputStream("orders.xml") { is ⇒
-      val xmlEventReader = new XMLEventReader(ScalaIOSource.fromInputStream(is))
-      Source(() ⇒ xmlEventReader).transform(() ⇒ new TaxStatefulStage)
+    withXMLEventReader("orders.xml") { reader ⇒
+      Source(() ⇒ reader).transform(() ⇒ new TaxStatefulStage)
         .runWith(TestSink.probe[Tax])
         .request(41)
         .expectNext(Tax("federal", "0.80"), Tax("state", "0.80"), Tax("local", "0.40"))
@@ -88,13 +87,21 @@ class ProcessingLargeXmlStreamingUsingStatefulStageTest extends TestSpec {
   }
 
   it should "parse only events for Order and generate Order case classes" in {
-    withInputStream("orders.xml") { is ⇒
-      val xmlEventReader = new XMLEventReader(ScalaIOSource.fromInputStream(is))
-      Source(() ⇒ xmlEventReader).transform(() ⇒ new OrderStatefulStage)
+    withXMLEventReader("orders.xml") { reader ⇒
+      Source(() ⇒ reader).transform(() ⇒ new OrderStatefulStage)
         .runWith(TestSink.probe[Order])
         .request(41)
         .expectNext(Order("1"))
         .expectComplete()
     }
+  }
+
+  it should "parse a large xml file" in {
+    val start = System.currentTimeMillis()
+    withXMLEventReader("lot-of-orders.xml") { reader ⇒
+      Source(() ⇒ reader).transform(() ⇒ new TaxStatefulStage)
+        .runFold(0) { case (c, _) ⇒ c + 1 }.futureValue shouldBe 300000
+    }
+    println(s"Processing took: ${System.currentTimeMillis() - start} ms")
   }
 }

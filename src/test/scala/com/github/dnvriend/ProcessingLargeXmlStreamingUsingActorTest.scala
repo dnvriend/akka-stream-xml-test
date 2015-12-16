@@ -42,33 +42,27 @@ class ProcessingLargeXmlStreamingUsingActorTest extends TestSpec {
       case EvText(text) if inTax ⇒
         taxValue = text
       case EvElemEnd(_, "tax") if inTax ⇒
+        // side effect here
         log.info(Tax(taxType, taxValue).toString)
         inTax = false
       case _ ⇒
     }
   }
 
-  "Loading a big XML file whilst generating XMLEvents" should "consume less memory" ignore {
-    withInputStream("lot-of-orders.xml") { is ⇒
-      val memBefore = allocatedMemory
-      val iteratorOfXMLEvents = new XMLEventReader(ScalaIOSource.fromInputStream(is))
-      val src: Source[XMLEvent, Unit] = Source(() ⇒ iteratorOfXMLEvents)
-      val memAfter = allocatedMemory
-      val total: Long = src.runFold(0L) { (c, _) ⇒ c + 1 }.futureValue // block on finish
-      println("total: " + total)
-      println("Before: " + memBefore)
-      println("After: " + memAfter)
+  "Loading a big XML file whilst generating XMLEvents" should "consume less memory" in {
+    val start = System.currentTimeMillis()
+    withXMLEventReader("lot-of-orders.xml") { reader ⇒
+      Source(() ⇒ reader).runFold(0L) { (c, _) ⇒ c + 1 }.futureValue shouldBe 4800003 // 4.8 million events :)
     }
+    println(s"Processing took: ${System.currentTimeMillis() - start} ms")
   }
 
   it should "parse only events for Tax and generate Tax case classes" in {
     val taxActor = system.actorOf(Props(new TaxActor))
     val probe = TestProbe()
     probe watch taxActor
-    withInputStream("orders.xml") { is ⇒
-      val iteratorOfXMLEvents = new XMLEventReader(ScalaIOSource.fromInputStream(is))
-      val src: Source[XMLEvent, Unit] = Source(() ⇒ iteratorOfXMLEvents)
-      src.runWith(Sink.actorRef(taxActor, PoisonPill))
+    withXMLEventReader("orders.xml") { reader ⇒
+      Source(() ⇒ reader).runWith(Sink.actorRef(taxActor, PoisonPill))
       probe.expectTerminated(taxActor)
     }
   }
