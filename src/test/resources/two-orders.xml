@@ -1,0 +1,26 @@
+<orders>
+    <order id="1">
+        <item name="Pizza" price="12.00">
+            <pizza>
+                <crust type="thin" size="14"/>
+                <topping>cheese</topping>
+                <topping>sausage</topping>
+            </pizza>
+        </item>
+        <item name="Breadsticks" price="4.00"/>
+        <tax type="federal">0.80</tax>
+        <tax type="state">0.80</tax>
+        <tax type="local">0.40</tax>
+    </order>
+    <order id="2">
+        <item name="Pizza" price="13.00">
+            <pizza>
+                <crust type="thin" size="18"/>
+                <topping>sausage</topping>
+            </pizza>
+        </item>
+        <tax type="federal">0.80</tax>
+        <tax type="state">0.80</tax>
+        <tax type="local">0.40</tax>
+    </order>
+</orders>

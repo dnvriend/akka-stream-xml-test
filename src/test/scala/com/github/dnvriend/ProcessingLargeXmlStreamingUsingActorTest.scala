@@ -49,7 +49,7 @@ class ProcessingLargeXmlStreamingUsingActorTest extends TestSpec {
     }
   }
 
-  "Loading a big XML file whilst generating XMLEvents" should "consume less memory" in {
+  "Loading a big XML file whilst generating XMLEvents" should "consume less memory" ignore {
     val start = System.currentTimeMillis()
     withXMLEventReader("lot-of-orders.xml") { reader ⇒
       Source(() ⇒ reader).runFold(0L) { (c, _) ⇒ c + 1 }.futureValue shouldBe 4800003 // 4.8 million events :)
@@ -61,7 +61,7 @@ class ProcessingLargeXmlStreamingUsingActorTest extends TestSpec {
     val taxActor = system.actorOf(Props(new TaxActor))
     val probe = TestProbe()
     probe watch taxActor
-    withXMLEventReader("orders.xml") { reader ⇒
+    withXMLEventReader("one-order.xml") { reader ⇒
       Source(() ⇒ reader).runWith(Sink.actorRef(taxActor, PoisonPill))
       probe.expectTerminated(taxActor)
     }
