@@ -20,6 +20,8 @@ libraryDependencies ++= {
 
 fork in Test := true
 
+javaOptions in Test ++= Seq("-Xms30m","-Xmx30m")
+
 parallelExecution in Test := false
 
 licenses +=("Apache-2.0", url("http://opensource.org/licenses/apache2.0.php"))
