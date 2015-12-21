@@ -16,15 +16,17 @@
 
 package com.github.dnvriend.util
 
-import java.io.{ BufferedWriter, FileWriter }
+import java.io.File
 import java.util.UUID
 
 import akka.actor.Terminated
+import akka.stream.io.SynchronousFileSink
 import akka.stream.scaladsl.Source
+import akka.util.ByteString
 
 import scala.concurrent.Future
 import scala.io.{ Source ⇒ ScalaIOSource }
-import scala.util.{ Failure, Random, Try }
+import scala.util.Random
 import scala.xml.pull.XMLEventReader
 
 object GenerateSepaCamtFile extends App with CoreServices {
@@ -206,29 +208,26 @@ object GenerateSepaCamtFile extends App with CoreServices {
    * Returns the created SEPA CAMT file name when the following has happened:
    *
    * <ul>
-   *   <li>Created a file in /tmp</li>
-   *   <li>Writes 45.000 account statement entries, which is a transaction for a certain account, for one account only</li>
-   *   <li>Closes the SEPA CAMT file</li>
+   * <li>Created a file in /tmp</li>
+   * <li>Writes 45.000 account statement entries, which is a transaction for a certain account, for one account only</li>
+   * <li>Closes the SEPA CAMT file</li>
    * </ul>
    */
-  def writeFile: Future[String] = {
-    val fileName: String = s"/tmp/camt-$id"
-    val writer = new BufferedWriter(new FileWriter(fileName, true))
+  def writeFile(fileName: String): Future[String] =
     Source(() ⇒ Iterator from 0)
       .take(45001)
       .map {
         case 0     ⇒ camtHeader + statementHeader
         case 45000 ⇒ statementFooter + camtFooter
         case _     ⇒ entry
-      }.runForeach(writer.write)
-      .flatMap { _ ⇒
-        Try(writer.close()) match {
-          case Failure(t) ⇒ Future.failed(t)
-          case _          ⇒ Future.successful(())
-        }
-      }
-      .flatMap(_ ⇒ Future.successful(fileName))
-  }
+      }.map(convertToByteString)
+      .runWith(SynchronousFileSink(new File(fileName), append = true))
+      .map(_ ⇒ fileName)
+
+  /**
+   * Returns a new ByteString with default UTF-8 encoding
+   */
+  def convertToByteString(str: String): ByteString = ByteString(str)
 
   /**
    * Returns an XMLEventReader for a certain file.
@@ -246,13 +245,13 @@ object GenerateSepaCamtFile extends App with CoreServices {
    * The 'Create CAMT File' process. It does the following:
    *
    * <li>
-   *   <ul>Create a SEPA CAMT file with 45.000 account statement entries for one account</ul>
-   *   <ul>Counts the number of generated XMLEvent(s) that has been processed (which is about 9.3 million)</ul>
-   *   <ul>Terminates the Actor system when the process has finished</ul>
+   * <ul>Create a SEPA CAMT file with 45.000 account statement entries for one account</ul>
+   * <ul>Counts the number of generated XMLEvent(s) that has been processed (which is about 9.3 million)</ul>
+   * <ul>Terminates the Actor system when the process has finished</ul>
    * </li>
    */
   val result: Future[Long] = for {
-    fileName ← writeFile
+    fileName ← writeFile(s"/tmp/camt-$id")
     numOfEvents ← countEvents(fileName)
     _ ← terminate
   } yield numOfEvents
