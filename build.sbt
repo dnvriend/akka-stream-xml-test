@@ -10,6 +10,7 @@ libraryDependencies ++= {
   val akkaVersion = "2.4.1"
   val akkaStreamAndHttpVersion = "1.0"
   Seq(
+    "org.scala-lang.modules" %% "scala-xml" % "1.0.5",
     "com.typesafe.akka" %% "akka-actor" % akkaVersion,
     "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
     "com.typesafe.akka" %% "akka-stream-experimental" % akkaStreamAndHttpVersion,

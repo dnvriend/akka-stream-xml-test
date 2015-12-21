@@ -16,11 +16,10 @@
 
 package com.github.dnvriend
 
-import akka.actor.{ ActorLogging, Actor, PoisonPill, Props }
+import akka.actor.{ Actor, ActorLogging, PoisonPill, Props }
 import akka.stream.scaladsl.{ Sink, Source }
 import akka.testkit.TestProbe
 
-import scala.io.{ Source ⇒ ScalaIOSource }
 import scala.xml.pull._
 
 /**

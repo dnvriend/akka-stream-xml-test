@@ -16,29 +16,18 @@
 
 package com.github.dnvriend
 
-import java.io.InputStream
 import java.util.UUID
 
-import akka.actor.ActorSystem
-import akka.event.{ Logging, LoggingAdapter }
-import akka.stream.scaladsl.Source
-import akka.stream.{ ActorMaterializer, Materializer }
-import akka.util.Timeout
+import com.github.dnvriend.util.{ ClasspathResources, CoreServices }
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.{ BeforeAndAfterAll, FlatSpec, GivenWhenThen, Matchers }
 
+import scala.concurrent.Future
 import scala.concurrent.duration._
-import scala.concurrent.{ ExecutionContext, Future }
-import scala.io.{ Source ⇒ ScalaIOSource }
 import scala.util.Try
-import scala.xml.pull.{ XMLEvent, XMLEventReader }
 
-trait TestSpec extends FlatSpec with GivenWhenThen with Matchers with ScalaFutures with BeforeAndAfterAll {
-  implicit val timeout: Timeout = Timeout(5.seconds)
-  implicit val system: ActorSystem = ActorSystem()
-  implicit val ec: ExecutionContext = system.dispatcher
-  implicit val materializer: Materializer = ActorMaterializer()
-  implicit val log: LoggingAdapter = Logging(system, this.getClass)
+trait TestSpec extends FlatSpec with GivenWhenThen with Matchers with ScalaFutures with BeforeAndAfterAll with CoreServices with ClasspathResources {
+
   implicit val pc: PatienceConfig = PatienceConfig(timeout = 50.seconds)
 
   type UUIDAsString = String
@@ -48,34 +37,6 @@ trait TestSpec extends FlatSpec with GivenWhenThen with Matchers with ScalaFutur
   implicit class FutureToTry[T](f: Future[T]) {
     def toTry: Try[T] = Try(f.futureValue)
   }
-
-  def withInputStream[T](fileName: String)(f: InputStream ⇒ T): T = {
-    val is = fromClasspathAsStream(fileName)
-    try {
-      f(is)
-    } finally {
-      Try(is.close())
-    }
-  }
-
-  def withXMLEventReader[T](fileName: String)(f: XMLEventReader ⇒ T): T =
-    withInputStream(fileName) { is ⇒
-      f(new XMLEventReader(ScalaIOSource.fromInputStream(is)))
-    }
-
-  def withXMLEventSource[T](fileName: String)(f: Source[XMLEvent, Unit] ⇒ T): T =
-    withXMLEventReader(fileName) { reader ⇒
-      f(Source(() ⇒ reader))
-    }
-
-  def streamToString(is: InputStream): String =
-    ScalaIOSource.fromInputStream(is).mkString
-
-  def fromClasspathAsString(fileName: String): String =
-    streamToString(fromClasspathAsStream(fileName))
-
-  def fromClasspathAsStream(fileName: String): InputStream =
-    getClass.getClassLoader.getResourceAsStream(fileName)
 
   /**
    * Returns the amount of memory in bytes
