@@ -16,7 +16,8 @@
 
 package com.github.dnvriend
 
-import akka.stream.stage.{ Context, StageState, StatefulStage, SyncDirective }
+import akka.stream._
+import akka.stream.stage._
 import akka.stream.testkit.scaladsl.TestSink
 
 import scala.xml.pull._
@@ -27,16 +28,32 @@ class ProcessingLargeXmlStreamingUsingStatefulStageTest extends TestSpec {
 
   case class Order(id: String)
 
-  trait AbstractXMLEventStage[Out] extends StatefulStage[XMLEvent, Out] {
-    def processEvents(ctx: Context[Out]): PartialFunction[XMLEvent, SyncDirective]
+  trait PushPull {
+    def doPull[T](in: Inlet[T]): Unit
+    def doPush[T](out: Outlet[T], elem: T): Unit
+  }
 
-    override def initial = new StageState[XMLEvent, Out] {
-      def default(ctx: Context[Out]): PartialFunction[XMLEvent, SyncDirective] = {
-        case _ ⇒ ctx.pull()
-      }
+  trait AbstractXMLEventStage[Out] extends GraphStage[FlowShape[XMLEvent, Out]] {
+    val in = Inlet[XMLEvent]("XMLEvent.in")
+    val out = Outlet[Out]("XMLEvent.out")
 
-      override def onPush(elem: XMLEvent, ctx: Context[Out]): SyncDirective =
-        processEvents(ctx).applyOrElse(elem, default(ctx))
+    override def shape: FlowShape[XMLEvent, Out] = FlowShape.of(in, out)
+
+    def processEvents(context: PushPull): PartialFunction[XMLEvent, Unit]
+
+    override def createLogic(inheritedAttributes: Attributes): GraphStageLogic = new GraphStageLogic(shape) with PushPull { logic ⇒
+      setHandler(in, new InHandler {
+        override def onPush(): Unit =
+          processEvents(logic).applyOrElse(grab(in), PartialFunction[XMLEvent, Unit] { case _ ⇒ pull(in) })
+      })
+
+      setHandler(out, new OutHandler {
+        override def onPull(): Unit = pull(in)
+      })
+
+      override def doPull[T](in: Inlet[T]): Unit = pull(in)
+
+      override def doPush[T](out: Outlet[T], elem: T): Unit = push(out, elem)
     }
   }
 
@@ -44,27 +61,27 @@ class ProcessingLargeXmlStreamingUsingStatefulStageTest extends TestSpec {
     var taxType: String = null
     var taxValue: String = null
 
-    override def processEvents(ctx: Context[Tax]): PartialFunction[XMLEvent, SyncDirective] = {
+    override def processEvents(ctx: PushPull): PartialFunction[XMLEvent, Unit] = {
       case EvElemStart(_, "tax", metadata, _) ⇒
         taxType = metadata.asAttrMap.getOrElse("type", "NOTHING")
-        ctx.pull()
+        ctx.doPull(in)
       case EvText(text) ⇒
         taxValue = text
-        ctx.pull()
+        ctx.doPull(in)
       case EvElemEnd(_, "tax") ⇒
-        ctx.push(Tax(taxType, taxValue))
+        ctx.doPush(out, Tax(taxType, taxValue))
     }
   }
 
   class OrderStatefulStage extends AbstractXMLEventStage[Order] {
     var orderId: String = null
 
-    override def processEvents(ctx: Context[Order]): PartialFunction[XMLEvent, SyncDirective] = {
+    override def processEvents(ctx: PushPull): PartialFunction[XMLEvent, Unit] = {
       case EvElemStart(_, "order", metadata, _) ⇒
         orderId = metadata.asAttrMap.getOrElse("id", "NOTHING")
-        ctx.pull()
+        ctx.doPull(in)
       case EvElemEnd(_, "order") ⇒
-        ctx.push(Order(orderId))
+        ctx.doPush(out, Order(orderId))
     }
   }
 
@@ -76,7 +93,7 @@ class ProcessingLargeXmlStreamingUsingStatefulStageTest extends TestSpec {
 
   it should "parse only events for Tax and generate Tax case classes" in {
     withXMLEventSource("one-order.xml") { source ⇒
-      source.transform(() ⇒ new TaxStatefulStage)
+      source.via(new TaxStatefulStage)
         .runWith(TestSink.probe[Tax])
         .request(Integer.MAX_VALUE)
         .expectNext(Tax("federal", "0.80"), Tax("state", "0.80"), Tax("local", "0.40"))
@@ -86,7 +103,7 @@ class ProcessingLargeXmlStreamingUsingStatefulStageTest extends TestSpec {
 
   it should "parse only events for Order and generate Order case classes" in {
     withXMLEventSource("one-order.xml") { source ⇒
-      source.transform(() ⇒ new OrderStatefulStage)
+      source.via(new OrderStatefulStage)
         .runWith(TestSink.probe[Order])
         .request(Integer.MAX_VALUE)
         .expectNext(Order("1"))
@@ -97,92 +114,9 @@ class ProcessingLargeXmlStreamingUsingStatefulStageTest extends TestSpec {
   ignore should "parse a large xml file" in {
     val start = System.currentTimeMillis()
     withXMLEventSource("lot-of-orders.xml") { source ⇒
-      source.transform(() ⇒ new TaxStatefulStage)
+      source.via(new TaxStatefulStage)
         .runFold(0) { case (c, _) ⇒ c + 1 }.futureValue shouldBe 300000
     }
     println(s"Processing took: ${System.currentTimeMillis() - start} ms")
-  }
-
-  /**
-   * All events from a given Order are in context of that order and as such must be tagged with information
-   * from that order, like eg. the orderId
-   *
-   * TaggedXMLEvent(id: String, event: XMLEvent)
-   */
-
-  case class TaggedXMLEvent(id: String, event: XMLEvent)
-
-  class OrderTaggingEventStatefulStage extends AbstractXMLEventStage[TaggedXMLEvent] {
-    var orderId: String = null
-
-    override def processEvents(ctx: Context[TaggedXMLEvent]) = {
-      case EvElemStart(_, "order", metadata, _) ⇒
-        orderId = metadata.asAttrMap.getOrElse("id", "NOTHING")
-        ctx.pull()
-      case EvElemEnd(_, "order") ⇒ ctx.pull()
-      case event                 ⇒ ctx.push(TaggedXMLEvent(orderId, event))
-    }
-  }
-
-  trait AbstractTaggedXMLEventStage[Out] extends StatefulStage[TaggedXMLEvent, Out] {
-    def processEvents(ctx: Context[Out]): PartialFunction[TaggedXMLEvent, SyncDirective]
-
-    override def initial = new StageState[TaggedXMLEvent, Out] {
-      def default(ctx: Context[Out]): PartialFunction[TaggedXMLEvent, SyncDirective] = {
-        case _ ⇒ ctx.pull()
-      }
-
-      override def onPush(elem: TaggedXMLEvent, ctx: Context[Out]): SyncDirective =
-        processEvents(ctx).applyOrElse(elem, default(ctx))
-    }
-  }
-
-  case class TaggedTax(id: String, tax: Tax)
-
-  class TaggedTaxStatefulStage extends AbstractTaggedXMLEventStage[TaggedTax] {
-    var taxType: String = null
-    var taxValue: String = null
-
-    override def processEvents(ctx: Context[TaggedTax]): PartialFunction[TaggedXMLEvent, SyncDirective] = {
-      case TaggedXMLEvent(id, EvElemStart(_, "tax", metadata, _)) ⇒
-        taxType = metadata.asAttrMap.getOrElse("type", "NOTHING")
-        ctx.pull()
-      case TaggedXMLEvent(id, EvText(text)) ⇒
-        taxValue = text
-        ctx.pull()
-      case TaggedXMLEvent(id, EvElemEnd(_, "tax")) ⇒
-        ctx.push(TaggedTax(id, Tax(taxType, taxValue)))
-    }
-  }
-
-  "Processing XML within context" should "process TaggedTax for one order" in {
-    withXMLEventSource("one-order.xml") { src ⇒
-      src.transform(() ⇒ new OrderTaggingEventStatefulStage)
-        .transform(() ⇒ new TaggedTaxStatefulStage)
-        .runWith(TestSink.probe[TaggedTax])
-        .request(Integer.MAX_VALUE)
-        .expectNext(TaggedTax("1", Tax("federal", "0.80")), TaggedTax("1", Tax("state", "0.80")), TaggedTax("1", Tax("local", "0.40")))
-        .expectComplete()
-    }
-  }
-
-  it should "process TaggedTax for two orders" in {
-    withXMLEventSource("two-orders.xml") { src ⇒
-      src.transform(() ⇒ new OrderTaggingEventStatefulStage)
-        .transform(() ⇒ new TaggedTaxStatefulStage)
-        .runWith(TestSink.probe[TaggedTax])
-        .request(Integer.MAX_VALUE)
-        .expectNext(TaggedTax("1", Tax("federal", "0.80")), TaggedTax("1", Tax("state", "0.80")), TaggedTax("1", Tax("local", "0.40")), TaggedTax("2", Tax("federal", "0.80")), TaggedTax("2", Tax("state", "0.80")), TaggedTax("2", Tax("local", "0.40")))
-        .expectComplete()
-    }
-  }
-
-  ignore should "process TaggedTax for a lot of orders" in {
-    withXMLEventSource("lot-of-orders.xml") { src ⇒
-      src.transform(() ⇒ new OrderTaggingEventStatefulStage)
-        .transform(() ⇒ new TaggedTaxStatefulStage)
-        .runFold(0) { (c, _) ⇒ c + 1 }
-        .futureValue shouldBe 300000
-    }
   }
 }
