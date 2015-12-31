@@ -16,7 +16,6 @@
 
 package com.github.dnvriend
 
-import akka.stream.scaladsl.Source
 import akka.stream.stage.{ Context, StageState, StatefulStage, SyncDirective }
 import akka.stream.testkit.scaladsl.TestSink
 
@@ -70,26 +69,26 @@ class ProcessingLargeXmlStreamingUsingStatefulStageTest extends TestSpec {
   }
 
   "Processing XML with stateful stage" should "count the number of events" in {
-    withXMLEventReader("one-order.xml") { reader ⇒
-      Source(() ⇒ reader).runFold(0) { (c, _) ⇒ c + 1 }.futureValue shouldBe 41
+    withXMLEventSource("one-order.xml") { source ⇒
+      source.runFold(0) { (c, _) ⇒ c + 1 }.futureValue shouldBe 41
     }
   }
 
   it should "parse only events for Tax and generate Tax case classes" in {
-    withXMLEventReader("one-order.xml") { reader ⇒
-      Source(() ⇒ reader).transform(() ⇒ new TaxStatefulStage)
+    withXMLEventSource("one-order.xml") { source ⇒
+      source.transform(() ⇒ new TaxStatefulStage)
         .runWith(TestSink.probe[Tax])
-        .request(41)
+        .request(Integer.MAX_VALUE)
         .expectNext(Tax("federal", "0.80"), Tax("state", "0.80"), Tax("local", "0.40"))
         .expectComplete()
     }
   }
 
   it should "parse only events for Order and generate Order case classes" in {
-    withXMLEventReader("one-order.xml") { reader ⇒
-      Source(() ⇒ reader).transform(() ⇒ new OrderStatefulStage)
+    withXMLEventSource("one-order.xml") { source ⇒
+      source.transform(() ⇒ new OrderStatefulStage)
         .runWith(TestSink.probe[Order])
-        .request(41)
+        .request(Integer.MAX_VALUE)
         .expectNext(Order("1"))
         .expectComplete()
     }
@@ -97,8 +96,8 @@ class ProcessingLargeXmlStreamingUsingStatefulStageTest extends TestSpec {
 
   ignore should "parse a large xml file" in {
     val start = System.currentTimeMillis()
-    withXMLEventReader("lot-of-orders.xml") { reader ⇒
-      Source(() ⇒ reader).transform(() ⇒ new TaxStatefulStage)
+    withXMLEventSource("lot-of-orders.xml") { source ⇒
+      source.transform(() ⇒ new TaxStatefulStage)
         .runFold(0) { case (c, _) ⇒ c + 1 }.futureValue shouldBe 300000
     }
     println(s"Processing took: ${System.currentTimeMillis() - start} ms")
@@ -161,7 +160,7 @@ class ProcessingLargeXmlStreamingUsingStatefulStageTest extends TestSpec {
       src.transform(() ⇒ new OrderTaggingEventStatefulStage)
         .transform(() ⇒ new TaggedTaxStatefulStage)
         .runWith(TestSink.probe[TaggedTax])
-        .request(41)
+        .request(Integer.MAX_VALUE)
         .expectNext(TaggedTax("1", Tax("federal", "0.80")), TaggedTax("1", Tax("state", "0.80")), TaggedTax("1", Tax("local", "0.40")))
         .expectComplete()
     }
@@ -172,7 +171,7 @@ class ProcessingLargeXmlStreamingUsingStatefulStageTest extends TestSpec {
       src.transform(() ⇒ new OrderTaggingEventStatefulStage)
         .transform(() ⇒ new TaggedTaxStatefulStage)
         .runWith(TestSink.probe[TaggedTax])
-        .request(72)
+        .request(Integer.MAX_VALUE)
         .expectNext(TaggedTax("1", Tax("federal", "0.80")), TaggedTax("1", Tax("state", "0.80")), TaggedTax("1", Tax("local", "0.40")), TaggedTax("2", Tax("federal", "0.80")), TaggedTax("2", Tax("state", "0.80")), TaggedTax("2", Tax("local", "0.40")))
         .expectComplete()
     }

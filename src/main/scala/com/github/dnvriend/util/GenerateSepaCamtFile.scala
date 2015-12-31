@@ -20,8 +20,7 @@ import java.io.File
 import java.util.UUID
 
 import akka.actor.Terminated
-import akka.stream.io.SynchronousFileSink
-import akka.stream.scaladsl.Source
+import akka.stream.scaladsl.{ FileIO, Source }
 import akka.util.ByteString
 
 import scala.concurrent.Future
@@ -214,14 +213,14 @@ object GenerateSepaCamtFile extends App with CoreServices {
    * </ul>
    */
   def writeFile(fileName: String): Future[String] =
-    Source(() ⇒ Iterator from 0)
+    Source.fromIterator(() ⇒ Iterator from 0)
       .take(45001)
       .map {
         case 0     ⇒ camtHeader + statementHeader
         case 45000 ⇒ statementFooter + camtFooter
         case _     ⇒ entry
       }.map(convertToByteString)
-      .runWith(SynchronousFileSink(new File(fileName), append = true))
+      .runWith(FileIO.toFile(new File(fileName), append = true))
       .map(_ ⇒ fileName)
 
   /**
@@ -239,7 +238,7 @@ object GenerateSepaCamtFile extends App with CoreServices {
    * Returns the number of XML events in the XML file
    */
   def countEvents(fileName: String): Future[Long] =
-    Source(() ⇒ xmlEventReader(fileName)).runFold(0L) { (c, _) ⇒ c + 1 }
+    Source.fromIterator(() ⇒ xmlEventReader(fileName)).runFold(0L) { (c, _) ⇒ c + 1 }
 
   /**
    * The 'Create CAMT File' process. It does the following:

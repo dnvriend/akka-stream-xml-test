@@ -17,7 +17,7 @@
 package com.github.dnvriend
 
 import akka.actor.{ Actor, ActorLogging, PoisonPill, Props }
-import akka.stream.scaladsl.{ Sink, Source }
+import akka.stream.scaladsl.Sink
 import akka.testkit.TestProbe
 
 import scala.xml.pull._
@@ -50,8 +50,8 @@ class ProcessingLargeXmlStreamingUsingActorTest extends TestSpec {
 
   "Loading a big XML file whilst generating XMLEvents" should "consume less memory" ignore {
     val start = System.currentTimeMillis()
-    withXMLEventReader("lot-of-orders.xml") { reader ⇒
-      Source(() ⇒ reader).runFold(0L) { (c, _) ⇒ c + 1 }.futureValue shouldBe 4800003 // 4.8 million events :)
+    withXMLEventSource("lot-of-orders.xml") { source ⇒
+      source.runFold(0L) { (c, _) ⇒ c + 1 }.futureValue shouldBe 4800003 // 4.8 million events :)
     }
     println(s"Processing took: ${System.currentTimeMillis() - start} ms")
   }
@@ -60,8 +60,8 @@ class ProcessingLargeXmlStreamingUsingActorTest extends TestSpec {
     val taxActor = system.actorOf(Props(new TaxActor))
     val probe = TestProbe()
     probe watch taxActor
-    withXMLEventReader("one-order.xml") { reader ⇒
-      Source(() ⇒ reader).runWith(Sink.actorRef(taxActor, PoisonPill))
+    withXMLEventSource("one-order.xml") { source ⇒
+      source.runWith(Sink.actorRef(taxActor, PoisonPill))
       probe.expectTerminated(taxActor)
     }
   }
