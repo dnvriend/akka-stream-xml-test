@@ -17,9 +17,11 @@
 package com.github.dnvriend.util
 
 import java.io.File
+import java.nio.file.StandardOpenOption._
 import java.util.UUID
 
 import akka.actor.Terminated
+import akka.stream.IOResult
 import akka.stream.scaladsl.{ FileIO, Source }
 import akka.util.ByteString
 
@@ -212,7 +214,7 @@ object GenerateSepaCamtFile extends App with CoreServices {
    * <li>Closes the SEPA CAMT file</li>
    * </ul>
    */
-  def writeFile(fileName: String): Future[String] =
+  def writeFile(fileName: String): Future[IOResult] =
     Source.fromIterator(() ⇒ Iterator from 0)
       .take(45001)
       .map {
@@ -220,8 +222,7 @@ object GenerateSepaCamtFile extends App with CoreServices {
         case 45000 ⇒ statementFooter + camtFooter
         case _     ⇒ entry
       }.map(convertToByteString)
-      .runWith(FileIO.toFile(new File(fileName), append = true))
-      .map(_ ⇒ fileName)
+      .runWith(FileIO.toFile(new File(fileName), Set(WRITE, CREATE, APPEND)))
 
   /**
    * Returns a new ByteString with default UTF-8 encoding
@@ -240,6 +241,10 @@ object GenerateSepaCamtFile extends App with CoreServices {
   def countEvents(fileName: String): Future[Long] =
     Source.fromIterator(() ⇒ xmlEventReader(fileName)).runFold(0L) { (c, _) ⇒ c + 1 }
 
+  val errorHandling: PartialFunction[Throwable, Unit] = {
+    case t: Throwable ⇒ t.printStackTrace()
+  }
+
   /**
    * The 'Create CAMT File' process. It does the following:
    *
@@ -249,22 +254,12 @@ object GenerateSepaCamtFile extends App with CoreServices {
    * <ul>Terminates the Actor system when the process has finished</ul>
    * </li>
    */
-  val result: Future[Long] = for {
-    fileName ← writeFile(s"/tmp/camt-$id")
+  val fileName = s"/tmp/camt-$id"
+  (for {
+    _ ← writeFile(fileName)
     numOfEvents ← countEvents(fileName)
+    _ = println(s"Number of events: $numOfEvents")
     _ ← terminate
-  } yield numOfEvents
-
-  /**
-   * Error handling, just print the stack trace to stderr
-   */
-  result.recover {
-    case t: Throwable ⇒
-      t.printStackTrace()
-  }
-
-  /**
-   * prints to stdout the number of generated events.
-   */
-  result.foreach(numOfEvents ⇒ println(s"Number of events: $numOfEvents"))
+  } yield numOfEvents)
+    .recover(errorHandling)
 }

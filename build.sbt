@@ -4,17 +4,16 @@ organization := "com.github.dnvriend"
 
 version := "1.0.0"
 
-scalaVersion := "2.11.7"
+scalaVersion := "2.11.8"
 
 libraryDependencies ++= {
-  val akkaVersion = "2.4.1"
-  val akkaStreamAndHttpVersion = "2.0.1"
+  val akkaVersion = "2.4.2"
   Seq(
     "org.scala-lang.modules" %% "scala-xml" % "1.0.5",
     "com.typesafe.akka" %% "akka-actor" % akkaVersion,
     "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
-    "com.typesafe.akka" %% "akka-stream-experimental" % akkaStreamAndHttpVersion,
-    "com.typesafe.akka" %% "akka-stream-testkit-experimental" % akkaStreamAndHttpVersion % Test,
+    "com.typesafe.akka" %% "akka-stream" % akkaVersion,
+    "com.typesafe.akka" %% "akka-stream-testkit" % akkaVersion % Test,
     "org.scalatest" %% "scalatest" % "2.2.4" % Test
   )
 }
