@@ -22,7 +22,7 @@ import akka.stream.testkit.scaladsl.TestSink
 
 import scala.xml.pull._
 
-class ProcessingLargeXmlStreamingUsingStatefulStageTest extends TestSpec {
+class ProcessingLargeXmlStreamingUsingGraphStageTest extends TestSpec {
 
   case class Tax(taxType: String, value: String)
 
