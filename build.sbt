@@ -6,15 +6,18 @@ version := "1.0.0"
 
 scalaVersion := "2.11.8"
 
+resolvers += Resolver.jcenterRepo
+
 libraryDependencies ++= {
-  val akkaVersion = "2.4.2"
+  val akkaVersion = "2.4.8"
   Seq(
     "org.scala-lang.modules" %% "scala-xml" % "1.0.5",
     "com.typesafe.akka" %% "akka-actor" % akkaVersion,
     "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
     "com.typesafe.akka" %% "akka-stream" % akkaVersion,
+    "com.github.dnvriend" %% "akka-persistence-query-extensions" % "0.0.4",
     "com.typesafe.akka" %% "akka-stream-testkit" % akkaVersion % Test,
-    "org.scalatest" %% "scalatest" % "2.2.4" % Test
+    "org.scalatest" %% "scalatest" % "2.2.6" % Test
   )
 }
 
@@ -35,7 +38,6 @@ ScalariformKeys.preferences := ScalariformKeys.preferences.value
   .setPreference(AlignSingleLineCaseStatements, true)
   .setPreference(AlignSingleLineCaseStatements.MaxArrowIndent, 100)
   .setPreference(DoubleIndentClassDeclaration, true)
-  .setPreference(RewriteArrowSymbols, true)
 
 // enable updating file headers //
 import de.heikoseeberger.sbtheader.license.Apache2_0

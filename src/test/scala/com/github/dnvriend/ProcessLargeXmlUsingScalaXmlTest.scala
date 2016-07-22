@@ -22,7 +22,7 @@ class ProcessLargeXmlUsingScalaXmlTest extends TestSpec {
 
   "Loading a big XML file with the Scala XML loader" should "consume a lot of resources" ignore {
     Given("A very large XML file (44MB)")
-    withInputStream("lot-of-orders.xml") { is ⇒
+    withInputStream("lot-of-orders.xml") { is =>
       val threeHundredMegaBytes: Long = 300 * 1024 * 1024
       val memBefore = allocatedMemory
       When("The XML file is converted to a Seq of Elem using the strict loader of Scala XML")

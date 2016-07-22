@@ -1,43 +1,96 @@
 # akka-stream-xml-test
 Very small study project on processing large xml files using scala XML and akka stream.
 
-# Outline
-As expected, scala xml is rather strict, ie. when a large XML file is processed, the whole NodeSeq is in memory.
-When processing large XML files, using akka stream can become a good solution to process in a bounded memory context.
+## akka-persistence-query-extensions
+The results of the study on how to process large XML files efficiently has lead to akka-stream components that I have
+made open source in the librray [akka-persistence-query-extensions](https://github.com/dnvriend/akka-persistence-query-extensions):
 
-~~Using an `akka.stream.stage.StatefulStage` can be of use when we just want to process `scala.xml.pull.XMLEvent` 
-and convert them into case classes to be processed ie. by Slick.~~ Since Akka `v2.4.2` the `akka.stream.stage.StatefulStage` has been
-replaced by the `akka.stream.stage.GraphStage`. The `StatefulStage` class had some flaws and limitations, most notably around 
-completion handling which caused subtle bugs. The new `GraphStage` ([Custom processing with GraphStage](http://doc.akka.io/docs/akka/2.4.2/scala/stream/stream-customize.html)) 
-solves these issues and should be used instead. The `GraphStage` abstraction can be used to create arbitrary graph processing stages with any number of input or output ports.
-We can use the `GraphStage` to create a stage that is stateful. For a working example take a look at [ProcessingLargeXmlStreamingUsingStatefulStageTest](https://github.com/dnvriend/akka-stream-xml-test/blob/master/src/test/scala/com/github/dnvriend/ProcessingLargeXmlStreamingUsingGraphStageTest.scala).
+```
+"com.github.dnvriend" %% "akka-persistence-query-extensions" % "0.0.4"
+```
 
-Why use a `GraphStage` and not the stages that come out of the box with Akka Stream and are available using the Akka Stream DSL? Simple really,
-sometimes the operation you are looking for is just missing from Akka Stream, so you should implement that functionality yourself (like eg. 
-processing an XML graph stage) or for performance reasons. The downside is that you should maintain the custom stage, which should not be 
-your primary concern (your primary concern should be creating domain solutions for your client/patron, not maintaining framework components).
+This library contains a lot of akka-streams utilities in context of akka-persistence but also I/O related components like
+for example parsing and validating XML.
 
-Creating `scala.xml.pull.XMLEvent` messages is made possible by the `scala.xml.pull.XMLEventReader` that accepts an
-`scala.io.Source` (please notice the __scala.io__ package), object, which has been created from an `java.io.InputStream`.  
+The following XML components are available in [akka-persistence-query-extensions](https://github.com/dnvriend/akka-persistence-query-extensions):
 
-# Some Akka Stream Parley:
-Akka stream uses the following abstractions:
+## akka.stream.integration.xml.Validation
+[Validation](https://github.com/dnvriend/akka-persistence-query-extensions/blob/master/src/main/scala/akka/stream/integration/xml/Validation.scala): Given a stream of ByteString, it validates an XML file given an XSD.
 
-* `Stream`: a continually moving flow of elements, 
-* `Element`: the processing unit of streams,
-* `Processing stage`: building blocks that build up a `Flow` or `FlowGraph` for example `map()`, `filter()`, `transform()`, `junction()` etc,
-* `Source`: a processing stage with exactly one output, emitting data elements when downstream processing stages are ready to receive them,
-* `Sink`: a processing stage with exactly one input, requesting and accepting data elements
-* `Flow`: a processing stage with exactly one input and output, which connects its up- and downstream by moving/transforming the data elements flowing through it,
-* `Runnable flow`: A flow that has both ends attached to a `Source` and `Sink` respectively,
-* `Materialized flow`: An instantiation / incarnation / materialization of the abstract processing-flow template. 
+## akka.stream.integration.xml.XMLEventSource
+[XMLEventSource](https://github.com/dnvriend/akka-persistence-query-extensions/blob/master/src/main/scala/akka/stream/integration/xml/XMLEventSource.scala): Given an inputstream or filename, it creates a `Source[XMLEvent, NotUsed]` that can be used to process
+an XML file. It can be used together with akka-stream's processing stages and the
+`akka.persistence.query.extension.Journal` to store the transformed messages in the journal to be consumed
+by other components. It can also be used with `reactive-activemq`'s
+`akka.stream.integration.activemq.ActiveMqProducer` to send these messages to a VirtualTopic.
 
-The abstractions above (`Flow`, `Source`, `Sink`, `Processing stage`) are used to create a processing-stream `template` or `blueprint`. When the template has a `Source` connected to a `Sink` with optionally some `processing stages` between them, such a `template` is called a `Runnable Flow`. 
+## akka.stream.integration.xml.XMLParser
+[XMLParser](https://github.com/dnvriend/akka-persistence-query-extensions/blob/master/src/main/scala/akka/stream/integration/xml/XMLParser.scala): 
+It should be easy to write XML parsers to process large XML files efficiently. Most often this means reading the XML
+sequentially, parsing a known XML fragment and converting it to DTOs using case classes. For such a use case the
+`akka.stream.integration.xml.XMLParser` should help you get you up and running fast!
 
-The materializer for `akka-stream` is the [ActorMaterializer](http://doc.akka.io/api/akka-stream-and-http-experimental/1.0/#akka.stream.ActorMaterializer) 
-which takes the list of transformations comprising a [akka.stream.scaladsl.Flow](http://doc.akka.io/api/akka-stream-and-http-experimental/1.0/#akka.stream.javadsl.Flow) 
-and materializes them in the form of [org.reactivestreams.Processor](https://github.com/reactive-streams/reactive-streams-jvm/blob/master/api/src/main/java/org/reactivestreams/Processor.java) 
-instances, in which every stage is converted into one actor.
+For example, let's process the following XML:
 
-In akka-http parley, a 'Route' is a `Flow[HttpRequest, HttpResponse, Unit]` so it is a processing stage that transforms 
-`HttpRequest` elements to `HttpResponse` elements. 
+```xml
+<orders>
+    <order id="1">
+        <item name="Pizza" price="12.00">
+            <pizza>
+                <crust type="thin" size="14"/>
+                <topping>cheese</topping>
+                <topping>sausage</topping>
+            </pizza>
+        </item>
+        <item name="Breadsticks" price="4.00"/>
+        <tax type="federal">0.80</tax>
+        <tax type="state">0.80</tax>
+        <tax type="local">0.40</tax>
+    </order>
+</orders>
+```
+
+Imagine we are interested in only orders, and only the tax, lets write two parsers:
+
+```scala
+import scala.xml.pull._
+import akka.stream.scaladsl._
+import akka.stream.integration.xml.XMLParser
+import akka.stream.integration.xml.XMLParser._
+import akka.stream.integration.xml.XMLEventSource
+
+case class Order(id: String)
+
+val orderParser: Flow[XMLEvent, Order] = {
+ var orderId: String = null
+ XMLParser.flow {
+  case EvElemStart(_, "order", meta, _) ⇒
+    orderId = getAttr(meta)("id"); emit()
+  case EvElemEnd(_, "order") ⇒
+    emit(Order(orderId))
+ }
+}
+
+case class Tax(taxType: String, value: String)
+
+val tagParser: Flow[XMLEvent, Tax] = {
+  var taxType: String = null
+  var taxValue: String = null
+  XMLParser.flow {
+    case EvElemStart(_, "tax", meta, _) =>
+      taxType = getAttr(meta)("type"); emit()
+    case EvText(text) ⇒
+      taxValue = text; emit()
+    case EvElemEnd(_, "tax") ⇒
+      emit(Tax(taxType, taxValue))
+  }
+}
+
+XMLEventSource.fromFileName("orders.xml")
+ .via(orderParser).runForeach(println)
+
+XMLEventSource.fromFileName("orders.xml")
+ .via(tagParser).runForeach(println)
+```
+
+Have fun!

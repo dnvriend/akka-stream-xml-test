@@ -26,7 +26,7 @@ import akka.stream.scaladsl.{ FileIO, Source }
 import akka.util.ByteString
 
 import scala.concurrent.Future
-import scala.io.{ Source ⇒ ScalaIOSource }
+import scala.io.{ Source => ScalaIOSource }
 import scala.util.Random
 import scala.xml.pull.XMLEventReader
 
@@ -197,7 +197,7 @@ object GenerateSepaCamtFile extends App with CoreServices {
    * Returns the Terminated message when the Actor System has been terminated
    */
   def terminate: Future[Terminated] = {
-    Option(system).map { sys ⇒
+    Option(system).map { sys =>
       sys.terminate()
       sys.whenTerminated
     }.getOrElse {
@@ -215,12 +215,12 @@ object GenerateSepaCamtFile extends App with CoreServices {
    * </ul>
    */
   def writeFile(fileName: String): Future[IOResult] =
-    Source.fromIterator(() ⇒ Iterator from 0)
+    Source.fromIterator(() => Iterator from 0)
       .take(45001)
       .map {
-        case 0     ⇒ camtHeader + statementHeader
-        case 45000 ⇒ statementFooter + camtFooter
-        case _     ⇒ entry
+        case 0     => camtHeader + statementHeader
+        case 45000 => statementFooter + camtFooter
+        case _     => entry
       }.map(convertToByteString)
       .runWith(FileIO.toFile(new File(fileName), Set(WRITE, CREATE, APPEND)))
 
@@ -239,10 +239,10 @@ object GenerateSepaCamtFile extends App with CoreServices {
    * Returns the number of XML events in the XML file
    */
   def countEvents(fileName: String): Future[Long] =
-    Source.fromIterator(() ⇒ xmlEventReader(fileName)).runFold(0L) { (c, _) ⇒ c + 1 }
+    Source.fromIterator(() => xmlEventReader(fileName)).runFold(0L) { (c, _) => c + 1 }
 
   val errorHandling: PartialFunction[Throwable, Unit] = {
-    case t: Throwable ⇒ t.printStackTrace()
+    case t: Throwable => t.printStackTrace()
   }
 
   /**

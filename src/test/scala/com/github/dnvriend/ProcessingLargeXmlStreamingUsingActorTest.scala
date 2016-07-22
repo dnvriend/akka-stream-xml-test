@@ -17,10 +17,18 @@
 package com.github.dnvriend
 
 import akka.actor.{ Actor, ActorLogging, PoisonPill, Props }
+import akka.stream.contrib.Counter
+import akka.stream.integration.xml.XMLParser
+import akka.stream.integration.xml.XMLParser._
 import akka.stream.scaladsl.Sink
 import akka.testkit.TestProbe
+import com.github.dnvriend.ProcessingLargeXmlStreamingUsingActorTest.Tax
 
 import scala.xml.pull._
+
+object ProcessingLargeXmlStreamingUsingActorTest {
+  case class Tax(taxType: String, value: String)
+}
 
 /**
  * see: https://github.com/codesurf42/wikiParser/blob/master/src/main/scala/Parser.scala#L66-L71
@@ -28,30 +36,42 @@ import scala.xml.pull._
 class ProcessingLargeXmlStreamingUsingActorTest extends TestSpec {
 
   class TaxActor extends Actor with ActorLogging {
-    case class Tax(taxType: String, value: String)
 
     var inTax: Boolean = false
     var taxType: String = null
     var taxValue: String = null
 
     override def receive: Receive = {
-      case EvElemStart(_, "tax", metadata, _) ⇒
+      case EvElemStart(_, "tax", metadata, _) =>
         taxType = metadata.asAttrMap.getOrElse("type", "NOTHING")
         inTax = true
-      case EvText(text) if inTax ⇒
+      case EvText(text) if inTax =>
         taxValue = text
-      case EvElemEnd(_, "tax") if inTax ⇒
+      case EvElemEnd(_, "tax") if inTax =>
         // side effect here
         log.info(Tax(taxType, taxValue).toString)
         inTax = false
-      case _ ⇒
+      case _ =>
+    }
+  }
+
+  val taxParser = {
+    var taxType: String = null
+    var taxValue: String = null
+    XMLParser.flow {
+      case EvElemStart(_, "tax", meta, _) =>
+        taxType = getAttr(meta)("type"); emit()
+      case EvText(text) =>
+        taxValue = text; emit()
+      case EvElemEnd(_, "tax") =>
+        emit(Tax(taxType, taxValue))
     }
   }
 
   "Loading a big XML file whilst generating XMLEvents" should "consume less memory" ignore {
     val start = System.currentTimeMillis()
-    withXMLEventSource("lot-of-orders.xml") { source ⇒
-      source.runFold(0L) { (c, _) ⇒ c + 1 }.futureValue shouldBe 4800003 // 4.8 million events :)
+    withXMLEventSource("lot-of-orders.xml") { source =>
+      source.runWith(Counter.sink).futureValue shouldBe 4800003 // 4.8 million events :)
     }
     println(s"Processing took: ${System.currentTimeMillis() - start} ms")
   }
@@ -60,9 +80,15 @@ class ProcessingLargeXmlStreamingUsingActorTest extends TestSpec {
     val taxActor = system.actorOf(Props(new TaxActor))
     val probe = TestProbe()
     probe watch taxActor
-    withXMLEventSource("one-order.xml") { source ⇒
+    withXMLEventSource("one-order.xml") { source =>
       source.runWith(Sink.actorRef(taxActor, PoisonPill))
       probe.expectTerminated(taxActor)
+    }
+  }
+
+  it should "parse only events for tax" in {
+    withXMLEventSource("lot-of-orders.xml") { src =>
+      src.via(taxParser).runWith(Counter.sink).futureValue shouldBe 300000
     }
   }
 }
